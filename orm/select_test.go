@@ -88,6 +88,21 @@ var _ = Describe("Select", func() {
 		Expect(string(b)).To(Equal(`SELECT "has_many_model"."id", "has_many_model"."select_model_id" FROM "has_many_models" AS "has_many_model" WHERE ("has_many_model"."select_model_id" IN (1))`))
 	})
 
+	It("overwrites columns for has many", func() {
+		q := NewQuery(nil, &SelectModel{Id: 1}).
+			Relation("HasMany", func(q *Query) (*Query, error) {
+				q = q.ColumnExpr("expr")
+				return q, nil
+			})
+
+		q, err := q.model.GetJoin("HasMany").manyQuery(nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		b, err := selectQuery{q: q}.AppendQuery(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal(`SELECT expr FROM "has_many_models" AS "has_many_model" WHERE ("has_many_model"."select_model_id" IN (1))`))
+	})
+
 	It("expands ?TableColumns", func() {
 		q := NewQuery(nil, &SelectModel{Id: 1}).ColumnExpr("?TableColumns")
 
@@ -153,6 +168,15 @@ var _ = Describe("Select", func() {
 		b, err := selectQuery{q: q}.AppendQuery(nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(Equal(`SELECT * WHERE (TRUE) OR ((FALSE) AND (TRUE))`))
+	})
+
+	It("supports empty WhereGroup", func() {
+		q := NewQuery(nil).Where("TRUE").WhereGroup(func(q *Query) (*Query, error) {
+			return q, nil
+		})
+		b, err := selectQuery{q: q}.AppendQuery(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal(`SELECT * WHERE (TRUE)`))
 	})
 })
 
@@ -230,7 +254,7 @@ var _ = Describe("With", func() {
 		Expect(string(b)).To(Equal(`WITH "q2" AS (WITH "q1" AS (SELECT * FROM "q1") SELECT * FROM "q2", "q1") SELECT * FROM "q3", "q2"`))
 	})
 
-	It("supports Join.On.OnOr", func() {
+	It("supports Join.JoinOn.JoinOnOr", func() {
 		q := NewQuery(nil).Table("t1").
 			Join("JOIN t2").JoinOn("t2.c1 = t1.c1").JoinOn("t2.c2 = t1.c1").
 			Join("JOIN t3").JoinOn("t3.c1 = t3.c2").JoinOnOr("t3.c2 = t1.c2")
@@ -238,6 +262,15 @@ var _ = Describe("With", func() {
 		b, err := selectQuery{q: q}.AppendQuery(nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(Equal(`SELECT * FROM "t1" JOIN t2 ON (t2.c1 = t1.c1) AND (t2.c2 = t1.c1) JOIN t3 ON (t3.c1 = t3.c2) OR (t3.c2 = t1.c2)`))
+	})
+
+	It("excludes a column", func() {
+		q := NewQuery(nil, &SelectModel{}).
+			ExcludeColumn("has_one_id")
+
+		b, err := selectQuery{q: q}.AppendQuery(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal(`SELECT "id", "name" FROM "select_models" AS "select_model"`))
 	})
 })
 
